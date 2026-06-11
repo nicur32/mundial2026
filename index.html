@@ -371,7 +371,7 @@ footer a:hover{color:var(--lime)}
   </div>
 
   <div class="note-box note-blue" style="margin-top:10px">
-    🔄 <strong>Posiciones en tiempo real:</strong> Esta página usa la API gratuita de <strong>worldcup26.ir</strong> — las tablas de grupos se actualizan automáticamente sin necesidad de subir el archivo después de cada partido. Solo funciona con conexión a internet.
+    🔄 <strong>Posiciones automáticas:</strong> Un workflow de <strong>GitHub Actions</strong> descarga los datos de worldcup26.ir cada 30 minutos y los guarda en el repositorio. La página lee ese archivo local — sin errores CORS, sin intervención manual. También puedes ejecutarlo manualmente desde la pestaña <em>Actions</em> en GitHub.
   </div>
 
 </div>
@@ -581,38 +581,38 @@ const EN_TO_ES = {
 };
 
 // ════════════════════════════════════════════════════════
-// LIVE STANDINGS via worldcup26.ir API
+// LIVE STANDINGS — lee data.json generado por GitHub Actions
+// (sin CORS: mismo origen que la página)
 // ════════════════════════════════════════════════════════
 async function loadStandings(force=false){
   const statusEl = document.getElementById('api-status');
   const lastEl   = document.getElementById('last-updated');
   statusEl.className='api-status loading';
-  statusEl.innerHTML='<span class="spin">⟳</span>&nbsp; Cargando posiciones en tiempo real…';
+  statusEl.innerHTML='<span class="spin">⟳</span>&nbsp; Cargando posiciones…';
 
   try {
-    const [gRes, tRes] = await Promise.all([
-      fetch('https://worldcup26.ir/get/groups'),
-      fetch('https://worldcup26.ir/get/teams')
-    ]);
+    const res = await fetch('./data.json?t=' + Date.now());
+    if(!res.ok) throw new Error('fetch error');
+    const data = await res.json();
 
-    if(!gRes.ok || !tRes.ok) throw new Error('API error');
-
-    const gData = await gRes.json();
-    const tData = await tRes.json();
+    if(!data.groups || data.groups.length === 0) throw new Error('empty');
 
     // Build team map: id → {name_en, flag, iso2}
     const teamById = {};
-    (tData.teams||[]).forEach(t => { teamById[String(t.id)] = t; });
+    (data.teams||[]).forEach(t => { teamById[String(t.id)] = t; });
 
-    renderGroupsFromAPI(gData.groups || gData, teamById);
+    renderGroupsFromAPI(data.groups, teamById);
     statusEl.className='api-status ok';
-    statusEl.innerHTML='✓ Posiciones actualizadas en tiempo real · worldcup26.ir';
-    const now = new Date();
-    lastEl.textContent = `Última actualización: ${now.toLocaleTimeString('es-CL')}`;
+    statusEl.innerHTML='✓ Posiciones en tiempo real · actualizado automáticamente cada 30 min';
+
+    if(data.updated){
+      const upd = new Date(data.updated);
+      lastEl.textContent = `Datos del: ${upd.toLocaleString('es-CL', {timeZone:'America/Santiago'})} hora Chile`;
+    }
 
   } catch(e) {
     statusEl.className='api-status err';
-    statusEl.innerHTML='⚠ Sin conexión a la API — mostrando posiciones calculadas localmente';
+    statusEl.innerHTML='⚠ Datos aún no disponibles — el workflow se ejecuta cada 30 min';
     renderGroupsFallback();
   }
 }

@@ -1,0 +1,39 @@
+name: Actualizar datos Mundial 2026
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # cada 30 minutos
+  workflow_dispatch:           # permite ejecutar manualmente desde GitHub
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Descargar datos desde API
+        run: |
+          GROUPS=$(curl -sf --max-time 15 https://worldcup26.ir/get/groups || echo '{"groups":[]}')
+          TEAMS=$(curl -sf  --max-time 15 https://worldcup26.ir/get/teams  || echo '{"teams":[]}')
+          UPDATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          jq -n \
+            --argjson g "$GROUPS" \
+            --argjson t "$TEAMS" \
+            --arg u "$UPDATED" \
+            '{groups: $g.groups, teams: $t.teams, updated: $u}' > data.json
+          echo "data.json generado:"
+          wc -c data.json
+
+      - name: Commit si hay cambios
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git diff --staged --quiet && echo "Sin cambios" || (
+            git commit -m "chore: actualizar datos Mundial 2026 $(date -u +%H:%M UTC)"
+            git push
+          )
